@@ -1,3 +1,4 @@
+//No funciona, tiene que ser automatico y ahora es manual, confundio las leds 
 #include <Arduino.h>
 
 // ==== Pines LEDs contador manual ====
