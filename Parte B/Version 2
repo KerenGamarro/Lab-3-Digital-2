@@ -1,0 +1,169 @@
+//Keren Gamarro 23546
+//Universidad del Valle de Guatemala
+//Electronica Digital 2
+#include <Arduino.h>
+
+//Pines LEDs Contador Manual (4 bits)-Identifico cual es el manual
+const int ledA = 15;
+const int ledB = 4;
+const int ledC = 18;
+const int ledD = 19;
+
+// Pines LEDs Contador Automático (4 bits)-Identifico los leds que son automatico para no confundirlo
+const int ledAutoA = 13;
+const int ledAutoB = 32;
+const int ledAutoC = 2;
+const int ledAutoD = 34;
+
+// Botones
+const int botonSubir = 33;  // A GND
+const int botonBajar = 22;  // A 3.3V
+const int botonModo = 23;   // Resistencia externa a GND
+
+// Alarma-Yo tengo un led pero tambien puede ser un buzzer si se quiere algo mas ruidoso
+const int pinAlarma = 35;  //Led azul que esta por aparte
+
+// Variables globales
+volatile int contadorManual = 0;
+volatile int contadorAutomatico = 0;
+volatile bool actualizarAutomatico = false;  // Flag para actualizar desde el timer
+
+unsigned long tiempoRebote = 150;
+unsigned long tiempoUltimoSubir = 0;
+unsigned long tiempoUltimoBajar = 0;
+unsigned long tiempoUltimoModo = 0;
+
+bool estadoAnteriorSubir = HIGH;
+bool estadoAnteriorBajar = LOW;
+bool estadoAnteriorModo = HIGH;
+
+int modo = 0; // 0 = unidades, 1 = décadas
+
+hw_timer_t *timer = NULL;
+
+// Prototipos
+void mostrarContadorManual();
+void mostrarContadorAutomatico();
+void reiniciarAmbosContadores();
+void IRAM_ATTR onTimer();
+
+void setup() {
+  Serial.begin(9600);
+
+  // Configurar pines de LEDs
+  int ledsManual[] = {ledA, ledB, ledC, ledD};
+  for (int i = 0; i < 4; i++) pinMode(ledsManual[i], OUTPUT);
+
+  int ledsAuto[] = {ledAutoA, ledAutoB, ledAutoC, ledAutoD};
+  for (int i = 0; i < 4; i++) pinMode(ledsAuto[i], OUTPUT);
+
+  pinMode(pinAlarma, OUTPUT);
+  digitalWrite(pinAlarma, LOW);
+
+  // --- Configurar botones ---
+  pinMode(botonSubir, INPUT_PULLUP);
+  pinMode(botonBajar, INPUT_PULLDOWN);
+  pinMode(botonModo, INPUT); // resistencia externa
+
+  // --- Configurar Timer para contador automático ---
+  timer = timerBegin(0, 80, true); // 80 prescaler -> 1 tick = 1μs
+  timerAttachInterrupt(timer, &onTimer, true);
+  timerAlarmWrite(timer, 250000, true); // 250000μs = 250ms
+  timerAlarmEnable(timer);
+
+  mostrarContadorManual();
+  mostrarContadorAutomatico();
+}
+
+void loop() {
+  unsigned long ahora = millis();
+
+  // --- Botón Subir ---
+  bool estadoSubir = digitalRead(botonSubir);
+  if (estadoAnteriorSubir == HIGH && estadoSubir == LOW && (ahora - tiempoUltimoSubir > tiempoRebote)) {
+    if (modo == 0) {
+      contadorManual = (contadorManual + 1) % 10;
+    } else {
+      contadorManual += 10;
+      if (contadorManual > 90) contadorManual = 0;
+    }
+    mostrarContadorManual();
+    tiempoUltimoSubir = ahora;
+  }
+  estadoAnteriorSubir = estadoSubir;
+
+  // --- Botón Bajar ---
+  bool estadoBajar = digitalRead(botonBajar);
+  if (estadoAnteriorBajar == LOW && estadoBajar == HIGH && (ahora - tiempoUltimoBajar > tiempoRebote)) {
+    if (modo == 0) {
+      contadorManual = (contadorManual - 1 + 10) % 10;
+    } else {
+      contadorManual -= 10;
+      if (contadorManual < 0) contadorManual = 90;
+    }
+    mostrarContadorManual();
+    tiempoUltimoBajar = ahora;
+  }
+  estadoAnteriorBajar = estadoBajar;
+
+  // --- Botón Modo ---
+  bool estadoModo = digitalRead(botonModo);
+  if (estadoAnteriorModo == HIGH && estadoModo == LOW && (ahora - tiempoUltimoModo > tiempoRebote)) {
+    modo = !modo;
+    contadorManual = 0;
+    mostrarContadorManual();
+    Serial.println(modo == 0 ? "Modo: Unidades" : "Modo: Décadas");
+    tiempoUltimoModo = ahora;
+  }
+  estadoAnteriorModo = estadoModo;
+
+  // --- Actualizar contador automático si se disparó el timer ---
+  if (actualizarAutomatico) {
+    actualizarAutomatico = false;
+    contadorAutomatico = (contadorAutomatico + 1) % 16;  // Circular de 0 a 15 (4 bits)
+    mostrarContadorAutomatico();
+  }
+
+  // --- Comparar valores binarios ---
+  if ((contadorManual % 16) == contadorAutomatico) {
+    Serial.println("¡Contadores iguales! Reiniciando...");
+    digitalWrite(pinAlarma, HIGH);
+    delay(500);  // breve alarma
+    digitalWrite(pinAlarma, LOW);
+    reiniciarAmbosContadores();
+  }
+}
+
+void mostrarContadorManual() {
+  int valor = contadorManual % 16; // Convertir a binario de 4 bits
+  digitalWrite(ledA, bitRead(valor, 0));
+  digitalWrite(ledB, bitRead(valor, 1));
+  digitalWrite(ledC, bitRead(valor, 2));
+  digitalWrite(ledD, bitRead(valor, 3));
+
+  Serial.print("Contador Manual: ");
+  Serial.println(valor);
+}
+
+void mostrarContadorAutomatico() {
+  int valor = contadorAutomatico;
+  digitalWrite(ledAutoA, bitRead(valor, 0));
+  digitalWrite(ledAutoB, bitRead(valor, 1));
+  digitalWrite(ledAutoC, bitRead(valor, 2));
+  digitalWrite(ledAutoD, bitRead(valor, 3));
+
+  Serial.print("Contador Automático: ");
+  Serial.println(valor);
+}
+
+void reiniciarAmbosContadores() {
+  contadorManual = 0;
+  contadorAutomatico = 0;
+  mostrarContadorManual();
+  mostrarContadorAutomatico();
+}
+
+// --- Interrupción del timer cada 250ms ---
+void IRAM_ATTR onTimer() {
+  actualizarAutomatico = true;
+}
