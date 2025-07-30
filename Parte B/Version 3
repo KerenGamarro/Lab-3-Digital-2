@@ -1,0 +1,38 @@
+//Funciona en wokwi, toca probar en el proto
+#include <Arduino.h>
+
+// Pines de salida para los LEDs (ajusta si usas otros)
+const int ledPins[4] = {22, 19, 18, 5};
+
+// Variables para el temporizador
+unsigned long tiempoAnterior = 0;
+const unsigned long intervalo = 250;  // 250 milisegundos
+
+// Contador de 4 bits (0 a 15)
+byte contador = 0;
+
+void setup() {
+  // Configurar los pines como salidas
+  for (int i = 0; i < 4; i++) {
+    pinMode(ledPins[i], OUTPUT);
+    digitalWrite(ledPins[i], LOW);  // Asegurar que empiezan apagados
+  }
+}
+
+void loop() {
+  unsigned long tiempoActual = millis();
+
+  // Verificar si han pasado 250 ms
+  if (tiempoActual - tiempoAnterior >= intervalo) {
+    tiempoAnterior = tiempoActual;
+
+    // Mostrar el número binario en los LEDs
+    for (int i = 0; i < 4; i++) {
+      bool estado = bitRead(contador, i);  // Leer bit i del contador
+      digitalWrite(ledPins[i], estado);    // Encender o apagar LED
+    }
+
+    // Incrementar el contador cíclicamente (0 a 15)
+    contador = (contador + 1) % 16;
+  }
+}
