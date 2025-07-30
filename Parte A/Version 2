@@ -1,0 +1,79 @@
+//Keren Gamarro 23546
+//Universidad del Valle de Guatemala
+//Electronica Digital 2
+#include <Arduino.h>
+
+//Pines LEDs contador manual
+const int leda = 15;
+const int ledb = 4; 
+const int ledc = 18;
+const int ledd = 19;
+
+// Pines LEDs contador automático, coloco de una vez estos pines para no olvidar donde cablee que cosa
+const int leda = 13;
+const int ledb = 32;  
+const int ledc = 2;
+const int ledd = 34;
+
+// Alarma
+const int pinAlarma = 35; //Pin que se encendera en la alarma, igual lo declaro para que no se me olvide donde
+
+// Pines botones
+const int botonSubir = 33;
+const int botonBajar = 22;
+const int botonModo = 23;
+
+// Variables
+volatile int contadorManual = 0;
+volatile int modo = 0;
+volatile int contadorAuto = 0;
+
+unsigned long tiempoRebote = 150;
+unsigned long tiempoUltimoSubir = 0;
+unsigned long tiempoUltimoBajar = 0;
+unsigned long tiempoUltimoModo = 0;
+
+bool estadoAnteriorSubir = HIGH;
+bool estadoAnteriorBajar = LOW;
+bool estadoAnteriorModo = HIGH;
+
+// Timer
+hw_timer_t *timer = NULL;
+portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+
+// Prototipos
+void mostrarContadorManual();
+void mostrarContadorAuto();
+void IRAM_ATTR onTimer();
+void compararContadores();
+
+void setup() {
+  // LEDs manuales
+  pinMode(leda, OUTPUT);
+  pinMode(ledb, OUTPUT);
+  pinMode(ledc, OUTPUT);
+  pinMode(ledd, OUTPUT);
+
+  // LEDs automáticos
+  for (int i = 0; i < 5; i++) pinMode(autoLeds[i], OUTPUT);
+
+  // Alarma
+  pinMode(pinAlarma, OUTPUT);
+  digitalWrite(pinAlarma, LOW);
+
+  // Botones
+  pinMode(botonSubir, INPUT_PULLUP);
+  pinMode(botonBajar, INPUT_PULLDOWN);
+  pinMode(botonModo, INPUT);
+
+  Serial.begin(9600);
+
+  // Timer
+  timer = timerBegin(0, 80, true);         // 80 prescaler -> 1us por tick
+  timerAttachInterrupt(timer, &onTimer, true);
+  timerAlarmWrite(timer, 1000000, true);   // Cada 1 segundo
+  timerAlarmEnable(timer);
+
+  mostrarContadorManual();
+  mostrarContadorAuto();
+}
