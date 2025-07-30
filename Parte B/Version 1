@@ -1,0 +1,195 @@
+#include <Arduino.h>
+
+// ==== Pines LEDs contador manual ====
+const int leda = 15;
+const int ledb = 4;
+const int ledc = 18;
+const int ledd = 19;
+
+// ==== Pines LEDs contador automático ====
+const int autoLeds[] = {13, 32, 14, 34};  // Solo 4 bits (usar pin 14 para evitar conflicto)
+
+// ==== Alarma ====
+const int pinAlarma = 25;
+
+// ==== Pines botones ====
+const int botonSubir = 33;
+const int botonBajar = 22;
+const int botonModo = 23;
+
+// ==== Variables globales ====
+volatile int contadorManual = 0;
+volatile int modo = 0;
+volatile int contadorAuto = 0;
+
+unsigned long tiempoRebote = 150;
+unsigned long tiempoUltimoSubir = 0;
+unsigned long tiempoUltimoBajar = 0;
+unsigned long tiempoUltimoModo = 0;
+
+bool estadoAnteriorSubir = HIGH;
+bool estadoAnteriorBajar = LOW;
+bool estadoAnteriorModo = HIGH;
+
+// Timer
+hw_timer_t *timer = NULL;
+portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+
+// ==== Prototipos ====
+void mostrarContadorManual();
+void mostrarContadorAuto();
+void compararContadores();
+void reiniciarTodo();
+
+// ==== Timer ISR ====
+void IRAM_ATTR onTimer() {
+  portENTER_CRITICAL_ISR(&timerMux);
+  contadorAuto = (contadorAuto + 1) % 16;  // Contador circular de 4 bits
+  portEXIT_CRITICAL_ISR(&timerMux);
+}
+
+void setup() {
+  // ==== LEDs manuales ====
+  pinMode(leda, OUTPUT);
+  pinMode(ledb, OUTPUT);
+  pinMode(ledc, OUTPUT);
+  pinMode(ledd, OUTPUT);
+
+  // ==== LEDs automáticos ====
+  for (int i = 0; i < 4; i++) pinMode(autoLeds[i], OUTPUT);
+
+  // ==== Alarma ====
+  pinMode(pinAlarma, OUTPUT);
+  digitalWrite(pinAlarma, LOW);
+
+  // ==== Botones ====
+  pinMode(botonSubir, INPUT_PULLUP);
+  pinMode(botonBajar, INPUT_PULLDOWN);
+  pinMode(botonModo, INPUT);
+
+  Serial.begin(9600);
+
+  // ==== Timer automático ====
+  timer = timerBegin(0, 80, true);           // 80 prescaler: 1 us por tick
+  timerAttachInterrupt(timer, &onTimer, true);
+  timerAlarmWrite(timer, 250000, true);      // 250 ms = 250000 us
+  timerAlarmEnable(timer);
+
+  mostrarContadorManual();
+  mostrarContadorAuto();
+}
+
+void loop() {
+  unsigned long ahora = millis();
+
+  // --- Botón Subir ---
+  bool estadoSubir = digitalRead(botonSubir);
+  if (estadoAnteriorSubir == HIGH && estadoSubir == LOW && (ahora - tiempoUltimoSubir > tiempoRebote)) {
+    if (modo == 0) {
+      contadorManual = (contadorManual + 1) % 10;
+    } else {
+      contadorManual += 10;
+      if (contadorManual > 90) contadorManual = 0;
+    }
+    mostrarContadorManual();
+    tiempoUltimoSubir = ahora;
+  }
+  estadoAnteriorSubir = estadoSubir;
+
+  // --- Botón Bajar ---
+  bool estadoBajar = digitalRead(botonBajar);
+  if (estadoAnteriorBajar == LOW && estadoBajar == HIGH && (ahora - tiempoUltimoBajar > tiempoRebote)) {
+    if (modo == 0) {
+      contadorManual = (contadorManual - 1 + 10) % 10;
+    } else {
+      contadorManual -= 10;
+      if (contadorManual < 0) contadorManual = 90;
+    }
+    mostrarContadorManual();
+    tiempoUltimoBajar = ahora;
+  }
+  estadoAnteriorBajar = estadoBajar;
+
+  // --- Botón Modo ---
+  bool estadoModo = digitalRead(botonModo);
+  if (estadoAnteriorModo == HIGH && estadoModo == LOW && (ahora - tiempoUltimoModo > tiempoRebote)) {
+    modo = !modo;
+    contadorManual = 0;
+    mostrarContadorManual();
+    Serial.println(modo == 0 ? "Modo: Unidades" : "Modo: Décadas");
+    tiempoUltimoModo = ahora;
+  }
+  estadoAnteriorModo = estadoModo;
+
+  // Mostrar contador automático actualizado
+  static int ultimoValorAuto = -1;
+  if (contadorAuto != ultimoValorAuto) {
+    mostrarContadorAuto();
+    ultimoValorAuto = contadorAuto;
+  }
+
+  // Comparar
+  compararContadores();
+}
+
+// ==== Mostrar contador manual en LEDs ====
+void mostrarContadorManual() {
+  digitalWrite(leda, LOW);
+  digitalWrite(ledb, LOW);
+  digitalWrite(ledc, LOW);
+  digitalWrite(ledd, LOW);
+
+  if (modo == 0) {
+    switch (contadorManual) {
+      case 0: break;
+      case 1: digitalWrite(leda, HIGH); break;
+      case 2: digitalWrite(ledb, HIGH); break;
+      case 3: digitalWrite(leda, HIGH); digitalWrite(ledb, HIGH); break;
+      case 4: digitalWrite(ledc, HIGH); break;
+      case 5: digitalWrite(leda, HIGH); digitalWrite(ledc, HIGH); break;
+      case 6: digitalWrite(ledb, HIGH); digitalWrite(ledc, HIGH); break;
+      case 7: digitalWrite(leda, HIGH); digitalWrite(ledb, HIGH); digitalWrite(ledc, HIGH); break;
+      case 8: digitalWrite(ledd, HIGH); break;
+      case 9: digitalWrite(leda, HIGH); digitalWrite(ledd, HIGH); break;
+    }
+  } else {
+    switch ((contadorManual / 10) % 4) {
+      case 0: digitalWrite(leda, HIGH); break;
+      case 1: digitalWrite(ledb, HIGH); break;
+      case 2: digitalWrite(ledc, HIGH); break;
+      case 3: digitalWrite(ledd, HIGH); break;
+    }
+  }
+
+  Serial.print("Contador manual: ");
+  Serial.println(contadorManual);
+}
+
+// ==== Mostrar contador automático ====
+void mostrarContadorAuto() {
+  for (int i = 0; i < 4; i++) {
+    digitalWrite(autoLeds[i], (contadorAuto >> i) & 1);
+  }
+  Serial.print("Contador auto: ");
+  Serial.println(contadorAuto);
+}
+
+// ==== Comparador ====
+void compararContadores() {
+  // Solo compara si ambos están entre 0–15
+  if (modo == 0 && contadorManual == contadorAuto) {
+    Serial.println("¡Contadores iguales! Reiniciando...");
+    digitalWrite(pinAlarma, HIGH);
+    delay(500);
+    digitalWrite(pinAlarma, LOW);
+    reiniciarTodo();
+  }
+}
+
+// ==== Reiniciar contadores ====
+void reiniciarTodo() {
+  contadorManual = 0;
+  contadorAuto = 0;
+  mostrarContadorManual();
+  mostrarContadorAuto();
+}
