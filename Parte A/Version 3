@@ -1,1 +1,74 @@
+//Keren Gamarro 23546
+//Universidad del Valle
+//Contador binario manual
+#include <Arduino.h>
+
+// Definiciones de pines para LEDs
+#define LED0 13  // Bit 0
+#define LED1 12  // Bit 1
+#define LED2 14  // Bit 2
+#define LED3 27  // Bit 3
+
+// Pines compatibles con interrupciones,no todos los pines permiten interrupciones externas
+#define BOTON_SUBIR 32
+#define BOTON_BAJAR 33
+
+// Variables del contador, sin una variable volatil las interrupciones no salen
+volatile int contador = 0;
+
+// Antirrebote
+volatile unsigned long ultimaInterrupcionSubir = 0;
+volatile unsigned long ultimaInterrupcionBajar = 0;
+const unsigned long reboteDelay = 200; // ms
+
+// Función para mostrar el contador en los LEDs
+void mostrarContador(int valor) {
+  digitalWrite(LED0, (valor >> 0) & 1);
+  digitalWrite(LED1, (valor >> 1) & 1);
+  digitalWrite(LED2, (valor >> 2) & 1);
+  digitalWrite(LED3, (valor >> 3) & 1);
+}
+
+// ISR para botón de subir
+void IRAM_ATTR subirContador() {
+  unsigned long ahora = millis();
+  if (ahora - ultimaInterrupcionSubir > reboteDelay) {
+    contador = (contador + 1) % 16;
+    ultimaInterrupcionSubir = ahora;
+  }
+}
+
+// ISR para botón de bajar
+void IRAM_ATTR bajarContador() {
+  unsigned long ahora = millis();
+  if (ahora - ultimaInterrupcionBajar > reboteDelay) {
+    contador = (contador - 1 + 16) % 16;
+    ultimaInterrupcionBajar = ahora;
+  }
+}
+
+void setup() {
+  // LEDs como salida
+  pinMode(LED0, OUTPUT);
+  pinMode(LED1, OUTPUT);
+  pinMode(LED2, OUTPUT);
+  pinMode(LED3, OUTPUT);
+
+  // Botones como entrada con pull-up, conectados a tierra
+  pinMode(BOTON_SUBIR, INPUT_PULLUP);
+  pinMode(BOTON_BAJAR, INPUT_PULLUP);
+
+  // Mostrar valor inicial
+  mostrarContador(contador);
+
+  // Configurar interrupciones
+  attachInterrupt(digitalPinToInterrupt(BOTON_SUBIR), subirContador, FALLING);
+  attachInterrupt(digitalPinToInterrupt(BOTON_BAJAR), bajarContador, FALLING);
+}
+
+void loop() {
+  // Refrescar LEDs desde el valor actual del contador
+  mostrarContador(contador);
+  delay(10); // pequeño delay para estabilidad
+}
 
