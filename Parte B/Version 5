@@ -1,0 +1,49 @@
+//Keren Gamarro 23546
+//Universidad del Valle de Guatemala
+//Contador binario automatico
+#include <Arduino.h>
+
+// Definición de pines para cada bit del contador
+#define LED0 15  // Bit 0 - menos significativo
+#define LED1  4  // Bit 1
+#define LED2 18  // Bit 2
+#define LED3 19  // Bit 3 - más significativo
+
+// Variables para el temporizador
+unsigned long tiempoAnterior = 0;
+const unsigned long intervalo = 250;  // 250 milisegundos
+
+// Contador de 4 bits (0 a 15)
+byte contador = 0;
+
+void setup() {
+  // Configurar pines como salidas
+  pinMode(LED0, OUTPUT);
+  pinMode(LED1, OUTPUT);
+  pinMode(LED2, OUTPUT);
+  pinMode(LED3, OUTPUT);
+
+  // Todos los leds inician en 0
+  digitalWrite(LED0, LOW);
+  digitalWrite(LED1, LOW);
+  digitalWrite(LED2, LOW);
+  digitalWrite(LED3, LOW);
+}
+
+void loop() {
+  unsigned long tiempoActual = millis();
+
+  // Verificar si han pasado 250 ms
+  if (tiempoActual - tiempoAnterior >= intervalo) {
+    tiempoAnterior = tiempoActual;
+
+    // Mostrar el número binario en los LEDs
+    digitalWrite(LED0, bitRead(contador, 0));
+    digitalWrite(LED1, bitRead(contador, 1));
+    digitalWrite(LED2, bitRead(contador, 2));
+    digitalWrite(LED3, bitRead(contador, 3));
+
+    // Incrementar el contador cíclicamente (0 a 15)
+    contador = (contador + 1) % 16;
+  }
+}
