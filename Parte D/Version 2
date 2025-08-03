@@ -1,0 +1,123 @@
+// Keren Gamarro - Laboratorio Final ESP32
+//Se le agrego monitor serial para verificar que el touch estuviera funcionando y se le cambio la sensibilidad, tambien se cambio a T4
+#include <Arduino.h>
+
+// Pines LEDs contador automático (timer)
+#define LED_AUTO0 15
+#define LED_AUTO1 4
+#define LED_AUTO2 18
+#define LED_AUTO3 19
+
+// Pines LEDs contador manual (botones)
+#define LED_MANUAL0 2
+#define LED_MANUAL1 12
+#define LED_MANUAL2 14
+#define LED_MANUAL3 27
+
+// Pines botones
+#define BOTON_SUBIR 32
+#define BOTON_BAJAR 33
+
+// Pin de alarma
+#define PIN_ALARMA 25
+
+// Sensor capacitivo en GPIO 13 (T4)
+#define SENSOR_TOUCH T4
+const int umbralTouch = 40;  // Ajusta según lecturas reales, obtenidas por el monitor serial
+
+// Variables contadores
+volatile int contadorManual = 0;
+byte contadorAutomatico = 0;
+
+// Temporizador
+unsigned long tiempoAnterior = 0;
+const unsigned long intervalo = 250;
+
+// Alarma
+bool estadoAlarma = false;
+bool coincidenciaAnterior = false;
+
+// Antirrebote
+volatile unsigned long ultimaInterrupcionSubir = 0;
+volatile unsigned long ultimaInterrupcionBajar = 0;
+const unsigned long reboteDelay = 200;
+
+void mostrarContador(byte valor, int led0, int led1, int led2, int led3) {
+  digitalWrite(led0, (valor >> 0) & 1);
+  digitalWrite(led1, (valor >> 1) & 1);
+  digitalWrite(led2, (valor >> 2) & 1);
+  digitalWrite(led3, (valor >> 3) & 1);
+}
+
+void IRAM_ATTR subirContador() {
+  unsigned long ahora = millis();
+  if (ahora - ultimaInterrupcionSubir > reboteDelay) {
+    contadorManual = (contadorManual + 1) % 16;
+    ultimaInterrupcionSubir = ahora;
+  }
+}
+
+void IRAM_ATTR bajarContador() {
+  unsigned long ahora = millis();
+  if (ahora - ultimaInterrupcionBajar > reboteDelay) {
+    contadorManual = (contadorManual - 1 + 16) % 16;
+    ultimaInterrupcionBajar = ahora;
+  }
+}
+
+void setup() {
+  pinMode(LED_AUTO0, OUTPUT);
+  pinMode(LED_AUTO1, OUTPUT);
+  pinMode(LED_AUTO2, OUTPUT);
+  pinMode(LED_AUTO3, OUTPUT);
+
+  pinMode(LED_MANUAL0, OUTPUT);
+  pinMode(LED_MANUAL1, OUTPUT);
+  pinMode(LED_MANUAL2, OUTPUT);
+  pinMode(LED_MANUAL3, OUTPUT);
+
+  pinMode(PIN_ALARMA, OUTPUT);
+  digitalWrite(PIN_ALARMA, LOW);
+
+  pinMode(BOTON_SUBIR, INPUT_PULLUP);
+  pinMode(BOTON_BAJAR, INPUT_PULLUP);
+
+  attachInterrupt(digitalPinToInterrupt(BOTON_SUBIR), subirContador, FALLING);
+  attachInterrupt(digitalPinToInterrupt(BOTON_BAJAR), bajarContador, FALLING);
+
+  Serial.begin(115200);
+}
+
+void loop() {
+  unsigned long tiempoActual = millis();
+
+  // Mostrar contadores
+  mostrarContador(contadorAutomatico, LED_AUTO0, LED_AUTO1, LED_AUTO2, LED_AUTO3);
+  mostrarContador(contadorManual, LED_MANUAL0, LED_MANUAL1, LED_MANUAL2, LED_MANUAL3);
+
+  // Leer sensor táctil y reiniciar contador automático si se toca
+  int lecturaTouch = touchRead(SENSOR_TOUCH);
+  Serial.print("Touch: ");
+  Serial.println(lecturaTouch);
+  if (lecturaTouch > 0 && lecturaTouch < umbralTouch) {
+    contadorAutomatico = 0;
+    delay(300); // debounce para sensor táctil
+  }
+
+  // Incrementar contador automático según temporizador
+  if (tiempoActual - tiempoAnterior >= intervalo) {
+    tiempoAnterior = tiempoActual;
+    contadorAutomatico = (contadorAutomatico + 1) % 16;
+  }
+
+  // Comparar contadores y controlar alarma
+  bool coincidenciaActual = (contadorAutomatico == contadorManual);
+  if (coincidenciaActual && !coincidenciaAnterior) {
+    estadoAlarma = !estadoAlarma;
+    digitalWrite(PIN_ALARMA, estadoAlarma);
+    contadorAutomatico = 0;
+  }
+  coincidenciaAnterior = coincidenciaActual;
+
+  delay(10);
+}
