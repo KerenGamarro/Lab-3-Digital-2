@@ -1,0 +1,115 @@
+// Keren Gamarro 23546
+// Universidad del Valle de Guatemala
+// Contador binario automático + manual + alarma comparadora
+
+#include <Arduino.h>
+
+// Pines de LEDs contador automático
+#define LED_AUTO0 15
+#define LED_AUTO1 4
+#define LED_AUTO2 18
+#define LED_AUTO3 19
+
+// Pines de LEDs contador manual
+#define LED_MANUAL0 13
+#define LED_MANUAL1 12
+#define LED_MANUAL2 14
+#define LED_MANUAL3 27
+
+// Pines de botones
+#define BOTON_SUBIR 32
+#define BOTON_BAJAR 33
+
+// Pin de alarma
+#define LED_ALARMA 25
+
+// Contadores
+volatile int contadorManual = 0;
+byte contadorTimer = 0;
+
+// Temporizador automático
+unsigned long tiempoAnterior = 0;
+const unsigned long intervalo = 250;
+
+// Antirrebote
+volatile unsigned long ultimaInterrupcionSubir = 0;
+volatile unsigned long ultimaInterrupcionBajar = 0;
+const unsigned long reboteDelay = 200;
+
+// Estado del LED de alarma
+bool estadoAlarma = false;
+
+// Mostrar en LEDs binarios
+void mostrarContador(byte valor, int led0, int led1, int led2, int led3) {
+  digitalWrite(led0, (valor >> 0) & 1);
+  digitalWrite(led1, (valor >> 1) & 1);
+  digitalWrite(led2, (valor >> 2) & 1);
+  digitalWrite(led3, (valor >> 3) & 1);
+}
+
+// ISR para botón de subir
+void IRAM_ATTR subirContador() {
+  unsigned long ahora = millis();
+  if (ahora - ultimaInterrupcionSubir > reboteDelay) {
+    contadorManual = (contadorManual + 1) % 16;
+    ultimaInterrupcionSubir = ahora;
+  }
+}
+
+// ISR para botón de bajar
+void IRAM_ATTR bajarContador() {
+  unsigned long ahora = millis();
+  if (ahora - ultimaInterrupcionBajar > reboteDelay) {
+    contadorManual = (contadorManual - 1 + 16) % 16;
+    ultimaInterrupcionBajar = ahora;
+  }
+}
+
+void setup() {
+  // LEDs automáticos
+  pinMode(LED_AUTO0, OUTPUT);
+  pinMode(LED_AUTO1, OUTPUT);
+  pinMode(LED_AUTO2, OUTPUT);
+  pinMode(LED_AUTO3, OUTPUT);
+
+  // LEDs manuales
+  pinMode(LED_MANUAL0, OUTPUT);
+  pinMode(LED_MANUAL1, OUTPUT);
+  pinMode(LED_MANUAL2, OUTPUT);
+  pinMode(LED_MANUAL3, OUTPUT);
+
+  // Alarma
+  pinMode(LED_ALARMA, OUTPUT);
+  digitalWrite(LED_ALARMA, LOW);
+
+  // Botones
+  pinMode(BOTON_SUBIR, INPUT_PULLUP);
+  pinMode(BOTON_BAJAR, INPUT_PULLUP);
+
+  // Interrupciones
+  attachInterrupt(digitalPinToInterrupt(BOTON_SUBIR), subirContador, FALLING);
+  attachInterrupt(digitalPinToInterrupt(BOTON_BAJAR), bajarContador, FALLING);
+}
+
+void loop() {
+  unsigned long tiempoActual = millis();
+
+  // Contador automático
+  if (tiempoActual - tiempoAnterior >= intervalo) {
+    tiempoAnterior = tiempoActual;
+    contadorTimer = (contadorTimer + 1) % 16;
+  }
+
+  // Mostrar valores en LEDs
+  mostrarContador(contadorTimer, LED_AUTO0, LED_AUTO1, LED_AUTO2, LED_AUTO3);
+  mostrarContador(contadorManual, LED_MANUAL0, LED_MANUAL1, LED_MANUAL2, LED_MANUAL3);
+
+  // Comparar contadores
+  if (contadorTimer == contadorManual) {
+    estadoAlarma = !estadoAlarma; // Cambia el estado de la alarma
+    digitalWrite(LED_ALARMA, estadoAlarma);
+    contadorTimer = 0; // Reinicia el contador automático
+  }
+
+  delay(10); // estabilidad
+}
